@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>우편번호 일괄 입력</title>
+<meta name="description" content="엑셀의 주소마다 도로명주소 검색으로 우편번호를 찾아 채워 주는 도구">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='7' width='26' height='18' rx='2' fill='%23fff' stroke='%23D23E28' stroke-width='2'/%3E%3Cpath d='M4 9l12 9 12-9' fill='none' stroke='%23D23E28' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+:root {
+  --paper: #F3F5F8;
+  --surface: #FFFFFF;
+  --ink: #17202E;
+  --ink-2: #566070;
+  --ink-3: #8A93A1;
+  --rule: #D9DEE5;
+  --rule-2: #EBEEF2;
+  --post: #D23E28;          /* 봉투 우편번호 칸의 빨간 테두리 */
+  --post-soft: #FBE9E5;
+  --action: #1F3A63;
+  --action-ink: #FFFFFF;
+  --ok: #1B7347;
+  --ok-soft: #E3F2E9;
+  --warn: #9A5B00;
+  --warn-soft: #FDF1DC;
+  --bad: #A8231B;
+  --bad-soft: #FBE5E3;
+  --focus: #2E62D9;
+  --shadow: 0 1px 2px rgba(23, 32, 46, .06), 0 4px 16px rgba(23, 32, 46, .05);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12161C; --surface: #1A2029; --ink: #E7EAF0; --ink-2: #A9B1BE; --ink-3: #747E8D;
+    --rule: #2F3743; --rule-2: #252C36; --post: #F0705A; --post-soft: #3A221E;
+    --action: #8FB0EA; --action-ink: #0F1724; --ok: #6CCB98; --ok-soft: #1C3328;
+    --warn: #E9B45A; --warn-soft: #3A2E17; --bad: #F08C84; --bad-soft: #3B2020; --focus: #8FB0EA;
+    --shadow: none; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12161C; --surface: #1A2029; --ink: #E7EAF0; --ink-2: #A9B1BE; --ink-3: #747E8D;
+  --rule: #2F3743; --rule-2: #252C36; --post: #F0705A; --post-soft: #3A221E;
+  --action: #8FB0EA; --action-ink: #0F1724; --ok: #6CCB98; --ok-soft: #1C3328;
+  --warn: #E9B45A; --warn-soft: #3A2E17; --bad: #F08C84; --bad-soft: #3B2020; --focus: #8FB0EA;
+  --shadow: none; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  font-size: 15px; line-height: 1.55; word-break: keep-all;
+}
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+
+/* ── 머리말 ───────────────────────────── */
+header.top { padding: 36px 0 20px; display: flex; gap: 24px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 28px; line-height: 1.25; font-weight: 700; letter-spacing: -0.02em; }
+.lede { margin: 6px 0 0; color: var(--ink-2); max-width: 46em; }
+.source { font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+.source b { color: var(--ink); font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+
+/* ── 단계 표시 ─────────────────────────── */
+ol.steps { list-style: none; margin: 0 0 18px; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; counter-reset: s; }
+ol.steps li { counter-increment: s; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-3); padding: 4px 12px 4px 4px; border-radius: 999px; }
+ol.steps li::before { content: counter(s); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 1.5px solid var(--rule); color: var(--ink-3); background: var(--surface); }
+ol.steps li.on { color: var(--ink); font-weight: 600; background: var(--surface); box-shadow: var(--shadow); }
+ol.steps li.on::before { border-color: var(--post); color: var(--post); }
+ol.steps li.done { color: var(--ink-2); }
+ol.steps li.done::before { content: "✓"; border-color: var(--ok); color: var(--ok); }
+
+/* ── 우편번호 칸 (봉투 모양) ────────────── */
+.zip { display: inline-flex; gap: 3px; vertical-align: middle; }
+.zip span { width: 22px; height: 28px; border: 1.5px solid var(--post); display: grid; place-items: center; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; color: var(--ink); background: var(--surface); }
+.zip.empty span { border-color: var(--rule); background: transparent; }
+.zip.big { gap: 8px; }
+.zip.big span { width: 54px; height: 66px; border-width: 2px; font-size: 30px; }
+.zip.big.empty span { border-color: var(--post); opacity: .55; }
+
+/* ── 파일 올리기 ───────────────────────── */
+.drop {
+  background: var(--surface); border: 1.5px dashed var(--rule); border-radius: 14px;
+  padding: 44px 24px; display: grid; justify-items: center; gap: 18px; text-align: center; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.drop:hover, .drop.over { border-color: var(--post); background: var(--post-soft); }
+.drop h2 { margin: 0; font-size: 19px; font-weight: 700; }
+.drop p { margin: 0; color: var(--ink-2); font-size: 14px; }
+.drop .pick { margin-top: 2px; }
+input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* ── 버튼 ─────────────────────────────── */
+.btn { border: 1px solid transparent; border-radius: 8px; padding: 9px 16px; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn.primary { background: var(--action); color: var(--action-ink); }
+.btn.primary:hover { filter: brightness(1.12); }
+.btn.line { background: var(--surface); border-color: var(--rule); color: var(--ink); }
+.btn.line:hover { border-color: var(--ink-3); }
+.btn.small { padding: 5px 10px; font-size: 13px; border-radius: 6px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+
+/* ── 설정 줄 ──────────────────────────── */
+.setup { background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); border: 1px solid var(--rule-2); padding: 18px 20px; display: grid; gap: 14px; }
+.file-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.file-name { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
+.file-meta { color: var(--ink-2); font-size: 14px; }
+.fields { display: flex; gap: 14px 18px; align-items: flex-end; flex-wrap: wrap; }
+.field { display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.field select { min-width: 150px; max-width: 260px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); font-size: 14px; }
+.fields .go { margin-left: auto; display: flex; gap: 8px; }
+
+.notice { border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+.notice.bad { background: var(--bad-soft); color: var(--bad); }
+.notice.warn { background: var(--warn-soft); color: var(--warn); }
+
+/* ── 진행 상황 ─────────────────────────── */
+.progress { height: 6px; background: var(--rule-2); border-radius: 99px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--post); transition: width .25s; }
+.tally { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.chip { border: 1px solid var(--rule); background: var(--surface); border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; color: var(--ink-2); }
+.chip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.chip[aria-pressed=true] { border-color: var(--ink); color: var(--ink); background: var(--rule-2); }
+.chip .sw { width: 8px; height: 8px; border-radius: 50%; }
+.tally .status-text { margin-left: auto; font-size: 13px; color: var(--ink-2); }
+
+/* ── 표 ───────────────────────────────── */
+.table-box { background: var(--surface); border: 1px solid var(--rule-2); border-radius: 14px; box-shadow: var(--shadow); overflow: auto; max-height: 64vh; }
+table { border-collapse: collapse; width: 100%; min-width: 860px; font-size: 14px; }
+thead th { position: sticky; top: 0; background: var(--surface); text-align: left; font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 10px 12px; border-bottom: 1px solid var(--rule); z-index: 1; }
+tbody td { padding: 10px 12px; border-bottom: 1px solid var(--rule-2); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: 0; }
+td.rn { color: var(--ink-3); font-variant-numeric: tabular-nums; width: 52px; }
+td.addr { width: 24%; }
+td.addr .ex { display: block; font-size: 12px; color: var(--ink-3); }
+td.z { width: 150px; }
+td.res { color: var(--ink); }
+td.res .sub { display: block; color: var(--ink-3); font-size: 12.5px; }
+td.res select { width: 100%; max-width: 520px; padding: 7px 9px; border-radius: 8px; border: 1.5px solid var(--warn); background: var(--surface); color: var(--ink); font-size: 13.5px; }
+td.res form { display: flex; gap: 6px; margin-top: 6px; }
+td.res form input { flex: 1; min-width: 0; padding: 6px 9px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); font-size: 13.5px; }
+td.st { width: 112px; }
+td.act { width: 150px; text-align: right; white-space: nowrap; }
+td.act a, .linkish { color: var(--ink-2); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--rule); }
+td.act a:hover, .linkish:hover { color: var(--ink); text-decoration-color: currentColor; }
+.linkish { background: none; border: 0; padding: 0; margin-left: 12px; cursor: pointer; }
+td.res select.chosen { border-color: var(--rule); }
+.tag { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.tag.ok { background: var(--ok-soft); color: var(--ok); }
+.tag.pick { background: var(--warn-soft); color: var(--warn); }
+.tag.none, .tag.error { background: var(--bad-soft); color: var(--bad); }
+.tag.wait { color: var(--ink-3); background: var(--rule-2); }
+.tag.busy { color: var(--ink-2); background: var(--rule-2); }
+.tag.busy::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(1turn); } }
+tr.flash td { animation: flash 1.2s ease-out; }
+@keyframes flash { from { background: var(--post-soft); } to { background: transparent; } }
+
+/* ── 내려받기 줄 ───────────────────────── */
+.dock { margin-top: 14px; padding-bottom: 18px; }
+.dock .inner { background: var(--surface); border: 1px solid var(--rule-2); box-shadow: var(--shadow); border-radius: 14px; padding: 14px 18px; display: flex; gap: 12px 24px; align-items: center; flex-wrap: wrap; }
+.opts { display: flex; gap: 6px 20px; flex-wrap: wrap; font-size: 13.5px; color: var(--ink-2); }
+.opts label { display: inline-flex; gap: 7px; align-items: center; cursor: pointer; }
+.opts input { width: 16px; height: 16px; accent-color: var(--action); }
+.dock .summary { margin-left: auto; font-size: 13.5px; color: var(--ink-2); text-align: right; }
+.dock .summary b { color: var(--ink); }
+
+footer { color: var(--ink-3); font-size: 12.5px; padding: 8px 0 40px; }
+footer p { margin: 4px 0; max-width: 72em; }
+[hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 720px) {
+  header.top { padding-top: 24px; }
+  h1 { font-size: 23px; }
+  .zip.big { gap: 5px; }
+  .zip.big span { width: 40px; height: 50px; font-size: 22px; }
+  .fields .go { margin-left: 0; width: 100%; }
+  .fields .go .btn { flex: 1; justify-content: center; }
+  .dock .summary { margin-left: 0; text-align: left; width: 100%; }
+  .wrap { padding: 0 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>우편번호 일괄 입력</h1>
+      <p class="lede">주소가 들어 있는 엑셀을 올리면 주소마다 행정안전부 도로명주소 검색으로 우편번호를 찾아 우편번호 칸을 채웁니다. 검색 결과로 확인된 우편번호만 파일에 들어갑니다.</p>
+    </div>
+    <div class="source" id="source"><span class="dot"></span><span>조회처 확인 중</span></div>
+  </header>
+
+  <ol class="steps" id="steps" aria-label="진행 단계">
+    <li data-step="1" class="on">엑셀 올리기</li>
+    <li data-step="2">열 확인</li>
+    <li data-step="3">조회·검토</li>
+    <li data-step="4">내려받기</li>
+  </ol>
+
+  <!-- 1. 파일 올리기 -->
+  <section id="dropSec">
+    <label class="drop" id="drop" for="file">
+      <span class="zip big empty" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+      <h2>주소가 담긴 엑셀 파일을 여기에 끌어다 놓으세요</h2>
+      <p>.xlsx 파일 · 첫 줄 근처에 ‘주소’ 제목이 있으면 열을 자동으로 찾습니다</p>
+      <span class="btn primary pick">파일 선택</span>
+    </label>
+    <input type="file" id="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    <div class="notice bad" id="dropErr" role="alert" hidden style="margin-top:12px"></div>
+  </section>
+
+  <!-- 2. 열 확인 -->
+  <section id="setupSec" hidden>
+    <div class="setup">
+      <div class="file-line">
+        <span class="file-name" id="fileName"></span>
+        <span class="file-meta" id="fileMeta"></span>
+        <button class="btn line small" id="changeFile" type="button">다른 파일 올리기</button>
+      </div>
+      <div class="fields">
+        <label class="field">시트<select id="selSheet"></select></label>
+        <label class="field">주소 열<select id="selAddr"></select></label>
+        <label class="field">우편번호를 넣을 열<select id="selZip"></select></label>
+        <div class="go">
+          <button class="btn primary" id="startBtn" type="button">우편번호 조회 시작</button>
+          <button class="btn line" id="stopBtn" type="button" hidden>멈추기</button>
+        </div>
+      </div>
+      <div class="notice bad" id="setupErr" role="alert" hidden></div>
+      <div class="notice bad" id="keyErr" role="alert" hidden></div>
+      <div class="notice warn" id="setupWarn" hidden></div>
+      <div id="progressBox" hidden>
+        <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 결과 -->
+  <section id="resultSec" hidden style="margin-top:16px">
+    <div class="tally" id="tally" role="group" aria-label="상태별 보기"></div>
+    <div class="table-box" style="margin-top:10px">
+      <table>
+        <thead><tr>
+          <th scope="col">행</th><th scope="col">엑셀 주소</th><th scope="col">우편번호</th>
+          <th scope="col">도로명주소 검색 결과</th><th scope="col">상태</th><th scope="col"><span class="sr">작업</span></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="dock">
+      <div class="inner">
+        <div class="opts">
+          <label><input type="checkbox" id="optClear" checked> 확인되지 않은 행의 기존 우편번호는 비우기</label>
+          <label><input type="checkbox" id="optCheck"> 확인용 ‘도로명주소 검색 결과’ 열 추가</label>
+        </div>
+        <div class="summary" id="summary"></div>
+        <button class="btn primary" id="downloadBtn" type="button" disabled>엑셀 내려받기</button>
+      </div>
+      <div class="notice bad" id="dlErr" role="alert" hidden style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>우편번호는 행정안전부 도로명주소 검색 결과에서만 가져오며, 직접 입력할 수 없습니다. 후보가 여러 개인 주소는 검색 결과 중에서 골라 주세요. 각 행의 ‘우체국에서 보기’로 인터넷우체국 결과와 맞춰 볼 수 있습니다.</p>
+    <p>엑셀 파일은 이 브라우저 안에서만 처리되고 어디에도 올라가지 않습니다. 우편번호를 찾기 위해 주소 글자만 행정안전부 도로명주소 검색(juso.go.kr)으로 보냅니다.</p>
+  </footer>
+</div>
+
+
+<script src="vendor/jszip.min.js"></script>
+<script src="config.js"></script>
+<script src="js/xlsx-lite.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/juso.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

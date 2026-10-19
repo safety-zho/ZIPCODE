@@ -1,8 +1,0 @@
-__pycache__/
-.venv/
-.build-venv/
-build/
-dist/
-*.spec
-.env
-debug/
