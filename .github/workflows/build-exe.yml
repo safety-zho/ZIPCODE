@@ -1,0 +1,66 @@
+# GitHub에 올리면 Windows 서버에서 자동으로 ZipcodeFiller.exe 를 만든다.
+# 결과: 저장소의 Actions 탭 → 가장 최근 실행 → Artifacts 의 ZipcodeFiller-windows
+name: Build Windows exe
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build exe
+        run: pyinstaller --noconfirm --clean --onefile --name ZipcodeFiller --add-data "static;static" app.py
+
+      - name: Check the exe starts
+        shell: pwsh
+        run: |
+          $env:OPEN_BROWSER = "0"; $env:PORT = "8123"
+          $p = Start-Process -FilePath "dist\ZipcodeFiller.exe" -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+              $r = Invoke-WebRequest -Uri "http://127.0.0.1:8123/api/config" -UseBasicParsing
+              $ok = $r.Content -match "manual_search_url"
+              $page = Invoke-WebRequest -Uri "http://127.0.0.1:8123/" -UseBasicParsing
+              $ok = $ok -and ($page.Content -match "zipBoxes")
+            } catch {}
+          }
+          if (-not $ok) { Stop-Process -Id $p.Id -Force; throw "exe did not start" }
+          # 참고용: GitHub 서버(해외)에서 인터넷우체국 실제 조회. 해외 접속이 막히면 실패할 수 있어 빌드는 계속한다.
+          try {
+            $body = '{"address":"테헤란로 123"}'
+            $res = Invoke-WebRequest -Uri "http://127.0.0.1:8123/api/search" -Method Post -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -UseBasicParsing
+            Write-Host "Live epost check:" ([Text.Encoding]::UTF8.GetString($res.RawContentStream.ToArray()))
+          } catch { Write-Host "Live epost check skipped/failed: $($_.Exception.Message)" }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Collect files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item dist\ZipcodeFiller.exe out\
+          Copy-Item .env.example out\
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ZipcodeFiller-windows
+          path: out/
+          retention-days: 90
