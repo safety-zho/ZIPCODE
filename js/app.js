@@ -282,7 +282,7 @@
       const extra = r.cands.length > 1 ? ` · 후보 ${r.cands.length}건 모두 같은 우편번호` : "";
       if (chosen.jibun || extra) res.append(el("span", { class: "sub", text: (chosen.jibun || "") + extra }));
     } else if (r.status === "none") {
-      res.append(el("span", { class: "sub", text: `검색 결과가 없습니다. 시·군·구를 붙이거나 상세주소를 빼고 다시 검색해 보세요.${r.note ? " (" + r.note + ")" : ""}` }));
+      res.append(el("span", { class: "sub", text: `검색 결과가 없습니다. 주소가 맞는지 확인하고, 시·군·구를 붙여 다시 검색해 보세요.${r.note ? " (" + r.note + ")" : ""}` }));
     } else if (r.status === "error") {
       res.append(el("span", { class: "sub", style: "color:var(--bad)", text: r.error }));
     }
