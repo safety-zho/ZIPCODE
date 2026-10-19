@@ -1,7 +1,7 @@
 name: Live site check
 on:
   push:
-    paths: [".github/workflows/e2e-live.yml", "tests/e2e-live.mjs"]
+    paths: [".github/workflows/e2e-live.yml", "tests/e2e-live.mjs", "js/**", "index.html"]
   workflow_dispatch:
 jobs:
   e2e:
@@ -20,10 +20,17 @@ jobs:
           import openpyxl
           wb = openpyxl.Workbook(); ws = wb.active
           ws["B1"] = "주소"; ws["C1"] = "우편번호"
-          for i, a in enumerate(["남부순환로 2620", "송파대로 145", "서울 강남구 테헤란로 123, 5층 501호", "중앙로 1", "없는길 9999"], 2):
+          for i, a in enumerate(["남부순환로 2620", "송파대로 145", "서울 강남구 테헤란로 123, 5층 501호 (역삼동)", "홍길동 강남구 역삼동 648-23 101동 202호", "중앙로 1", "없는길 9999"], 2):
               ws.cell(i, 2, a)
           wb.save("live.xlsx")
           PY
+      - name: Wait for GitHub Pages to publish this commit
+        run: |
+          for i in $(seq 1 40); do
+            if curl -sf "https://safety-zho.github.io/ZIPCODE/js/juso.js?$i" | cmp -s - js/juso.js; then echo "published"; exit 0; fi
+            sleep 10
+          done
+          echo "Pages not updated in time"; exit 1
       - name: Open the live site and run
         run: |
           node tests/e2e-live.mjs

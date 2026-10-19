@@ -295,7 +295,9 @@
 
     const actions = el("td", { class: "act" });
     if (r.status !== "wait" && r.status !== "busy") {
-      actions.append(el("a", { href: manualLink(r.query || r.address), target: "_blank", rel: "noopener", text: "우체국에서 보기" }));
+      // 인터넷우체국에도 동·호수를 뺀 검색어만 보낸다 (누를 때만)
+      const q = r.query || r.tried[0] || Juso.queryVariants(r.address)[0] || r.address;
+      actions.append(el("a", { href: manualLink(q), target: "_blank", rel: "noopener", text: "우체국에서 보기" }));
       if (!r.editing) actions.append(el("button", {
         class: "linkish", type: "button", text: "다시 검색",
         onclick: () => { r.editing = true; renderRow(r); const i = r.tr.querySelector("input"); if (i) i.focus(); },

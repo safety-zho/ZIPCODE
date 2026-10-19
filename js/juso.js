@@ -20,8 +20,13 @@
   }
 
   // ── 검색어 만들기 ─────────────────────────────────────
+  // 행정안전부로는 '시·군·구 + 도로명 + 건물번호'(또는 '동·리 + 지번')까지만 보낸다.
+  // 동·호수, 층, 괄호 안 내용, 이름 같은 나머지 글자는 보내지 않는다.
   const ROAD_CORE_RE = /^(.*?)([0-9가-힣A-Za-z·.]+(?:로|길))\s+((?:지하\s*)?\d+(?:-\d+)?)(?!\d)/;
-  const JIBUN_CORE_RE = /^(.*?)([0-9가-힣]+(?:동|리|가))\s+((?:산\s*)?\d+(?:-\d+)?)(?!\d)/;
+  // 띄어 쓰지 않은 경우: '테헤란로123', '중앙로123번길45'
+  const ROAD_NOSPACE_RE = /^(.*?)([가-힣A-Za-z·.][0-9가-힣A-Za-z·.]*?(?:로|길))((?:지하)?\d+(?:-\d+)?)(?![\d가-힣-])/;
+  const JIBUN_CORE_RE = /^(.*?)([가-힣][0-9가-힣]*(?:동|리|가))\s+((?:산\s*)?\d+(?:-\d+)?)(?!\d)/;
+  const SIDO_SHORT = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
 
   function normalizeAddress(addr) {
     let s = squash(addr);
@@ -36,25 +41,46 @@
     return squash(s);
   }
 
+  // 앞부분에서 시·도, 시·군·구, 읍·면 이름만 남긴다 (이름 등 다른 글자는 버림)
+  function regionPart(head) {
+    return squash(head).split(" ")
+      .filter((t) => t && (/(?:특별시|광역시|특별자치시|특별자치도|도|시|군|구|읍|면)$/.test(t) || SIDO_SHORT.includes(t)))
+      .join(" ");
+  }
+
+  // 주소에서 지역 + 핵심부(도로명 건물번호 또는 동 지번)를 뽑는다
+  function addressCore(addr) {
+    let s = sanitize(normalizeAddress(addr)).replace(/\([^)]*\)/g, " ");
+    s = squash(s.split(",")[0]);
+    let m = ROAD_CORE_RE.exec(s) || ROAD_NOSPACE_RE.exec(s);
+    if (m) return { kind: "road", region: regionPart(m[1]), core: squash(`${m[2]} ${m[3]}`) };
+    m = JIBUN_CORE_RE.exec(s);
+    if (m) return { kind: "jibun", region: regionPart(m[1]), core: squash(`${m[2]} ${m[3]}`) };
+    return null;
+  }
+
+  // 핵심부를 못 찾은 주소(건물 이름만 있는 경우 등)에서 층·호·동(아파트) 표기를 지운다
+  function stripDetail(s) {
+    return squash(String(s)
+      .replace(/(?:지하\s*|[Bb])?\d+\s*(?:층|호실|호|동)(?=\s|$)/g, " ")
+      .replace(/\d+-\d+\s*호(?=\s|$)/g, " "));
+  }
+
   function queryVariants(addr) {
-    const full = sanitize(normalizeAddress(addr));
     const out = [];
     const add = (q) => {
       q = squash(q).replace(/^[\s,]+|[\s,]+$/g, "");
       if (q.length >= 2 && !out.includes(q)) out.push(q);
     };
-    add(full);
-    let cleaned = squash(full.replace(/\([^)]*\)/g, " "));
-    cleaned = cleaned.split(",")[0];
-    add(cleaned);
-    let m = ROAD_CORE_RE.exec(cleaned);
-    if (m) {
-      add(`${m[1]}${m[2]} ${m[3]}`);
-      add(`${m[2]} ${m[3]}`);
-    } else if ((m = JIBUN_CORE_RE.exec(cleaned))) {
-      add(`${m[1]}${m[2]} ${m[3]}`);
+    const c = addressCore(addr);
+    if (c) {
+      if (c.region) add(`${c.region} ${c.core}`);
+      add(c.core);
+    } else {
+      const s = squash(sanitize(normalizeAddress(addr)).replace(/\([^)]*\)/g, " ").split(",")[0]);
+      add(stripDetail(s));
     }
-    return out.slice(0, 4);
+    return out;
   }
 
   function districtTokens(addr) {
@@ -67,11 +93,8 @@
   }
 
   function coreKey(q) {
-    let m = ROAD_CORE_RE.exec(q);
-    if (m) return (m[2] + m[3]).replace(/\s+/g, "");
-    m = JIBUN_CORE_RE.exec(q);
-    if (m) return (m[2] + m[3]).replace(/\s+/g, "");
-    return null;
+    const c = addressCore(q);
+    return c ? c.core.replace(/\s+/g, "") : null;
   }
 
   function candidateMatches(q, c) {
@@ -160,12 +183,14 @@
       throw last;
     }
 
-    /** 엑셀 주소 한 건 조회. query가 있으면(사용자가 고친 검색어) 그것만 쓴다. */
+    /** 엑셀 주소 한 건 조회. query가 있으면(사용자가 고친 검색어) 그것으로 찾는다.
+        어느 경우든 행정안전부로는 queryVariants()가 만든 검색어(동·호수 제외)만 보낸다. */
     async lookup(address, query) {
       const result = { address: squash(address), query: "", tried: [], candidates: [], total: 0, note: "" };
-      const variants = query ? [sanitize(query)].filter(Boolean) : queryVariants(address);
+      const source = query || address;
+      const variants = queryVariants(source);
       if (!variants.length) { result.note = "검색할 주소가 비어 있습니다."; return result; }
-      const districts = districtTokens(address);
+      const districts = districtTokens(source);
       let lastError = null, answered = 0;
       for (const q of variants) {
         result.tried.push(q);
@@ -197,7 +222,7 @@
     }
   }
 
-  const api = { Client, JusoError, queryVariants, districtTokens, candidateMatches, coreKey, sanitize, parseResponse, API_URL };
+  const api = { Client, JusoError, queryVariants, addressCore, stripDetail, districtTokens, candidateMatches, coreKey, sanitize, parseResponse, API_URL };
   global.Juso = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
