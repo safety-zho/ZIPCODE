@@ -1,0 +1,22 @@
+name: Probe juso API
+on:
+  push:
+    paths: [".github/workflows/probe-juso.yml"]
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call juso API without key (expect error JSON) and show CORS headers
+        run: |
+          out=""
+          for host in business.juso.go.kr www.juso.go.kr; do
+            url="https://$host/addrlink/addrLinkApi.do?confmKey=TEST&currentPage=1&countPerPage=5&keyword=%EB%82%A8%EB%B6%80%EC%88%9C%ED%99%98%EB%A1%9C%202620&resultType=json"
+            r=$(curl -sS -m 20 -i -H "Origin: https://safety-zho.github.io" "$url" 2>&1 | tr -d '\r' | head -c 1500)
+            status=$(echo "$r" | head -1)
+            acao=$(echo "$r" | grep -i '^access-control-allow-origin' | head -1)
+            loc=$(echo "$r" | grep -i '^location' | head -1)
+            body=$(echo "$r" | awk 'BEGIN{b=0} /^$/{b=1;next} b{print}' | head -c 400)
+            out="$out$host | $status | $acao | $loc | $body%0A"
+          done
+          echo "::notice title=juso probe::$out"
