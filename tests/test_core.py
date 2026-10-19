@@ -137,6 +137,62 @@ class LookupTests(unittest.TestCase):
         self.assertFalse(epost.verify("0613", "x", "y", epost.sign("0613", "x", "y")))
 
 
+class MatchTests(unittest.TestCase):
+    """인터넷우체국이 엉뚱한(앞선 검색의) 결과를 돌려줘도 우편번호로 쓰지 않는지."""
+
+    def test_candidate_matches(self):
+        C = epost.Candidate
+        self.assertTrue(epost.candidate_matches("남부순환로 2620", C("1", "서울특별시 강남구 남부순환로 2620 (도곡동)")))
+        self.assertFalse(epost.candidate_matches("남부순환로 2620", C("1", "서울특별시 강남구 남부순환로 2620-1")))
+        self.assertFalse(epost.candidate_matches("남부순환로 2620", C("1", "서울특별시 강남구 남부순환로 26201")))
+        self.assertFalse(epost.candidate_matches("남부순환로 2620", C("06133", "서울특별시 강남구 테헤란로 123 (역삼동)")))
+        self.assertTrue(epost.candidate_matches("서울 강남구 테헤란로 123, 5층", C("1", "서울특별시 강남구 테헤란로 123")))
+        self.assertTrue(epost.candidate_matches("역삼동 648-23", C("1", "서울특별시 강남구 테헤란로 123", "서울특별시 강남구 역삼동 648-23")))
+        self.assertTrue(epost.candidate_matches("세종대로 지하 2", C("1", "서울특별시 중구 세종대로 지하 2 (태평로1가)")))
+        self.assertTrue(epost.candidate_matches("여삼빌딩", C("1", "아무 주소")))  # 핵심부 없으면 확인 생략
+
+    def test_stale_result_is_rejected_not_used(self):
+        stale = [epost.Candidate("06133", "서울특별시 강남구 테헤란로 123 (역삼동, 여삼빌딩)", "")]
+        c = fake_client({"남부순환로 2620": stale})
+        with self.assertRaises(epost.MismatchError):
+            c.lookup("남부순환로 2620")
+        # 잘못된 응답은 캐시하지 않으므로 다시 검색하면 새로 조회한다
+        with self.assertRaises(epost.MismatchError):
+            c.lookup("남부순환로 2620")
+        self.assertEqual(c.calls, ["남부순환로 2620", "남부순환로 2620"])
+
+    def test_mixed_results_keep_only_matching(self):
+        good = epost.Candidate("11111", "가상시 가상구 송파대로 145", "")
+        bad = epost.Candidate("06133", "서울특별시 강남구 테헤란로 123", "")
+        r = fake_client({"송파대로 145": [bad, good]}).lookup("송파대로 145")
+        self.assertEqual([x.zip for x in r.candidates], ["11111"])
+
+    def test_mismatch_then_shorter_query_succeeds(self):
+        stale = [epost.Candidate("06133", "서울특별시 강남구 테헤란로 123", "")]
+        good = [epost.Candidate("11111", "가상시 가상구 송파대로 145", "")]
+        r = fake_client({"가상시 송파대로 145, 3층": stale, "가상시 송파대로 145": good}).lookup("가상시 송파대로 145, 3층")
+        self.assertEqual(r.query, "가상시 송파대로 145")
+        self.assertEqual([x.zip for x in r.candidates], ["11111"])
+
+    def test_new_http_session_per_request(self):
+        c = epost.EpostClient(mode="web", min_interval=0, retries=1)
+        made = []
+        real = c._new_session
+
+        def track():
+            s = real()
+            made.append(s)
+            s.get = lambda *a, **k: (_ for _ in ()).throw(epost.requests.ConnectionError())
+            return s
+
+        c._new_session = track
+        for _ in range(2):
+            with self.assertRaises(epost.LookupError_):
+                c._get("https://example.invalid/x", {"keyword": "a"})
+        self.assertEqual(len(made), 2)
+        self.assertIsNot(made[0], made[1])
+
+
 class ExcelTests(unittest.TestCase):
     def test_inspect_sample(self):
         lay = excel_io.inspect(SAMPLE)
@@ -191,10 +247,11 @@ class AppTests(unittest.TestCase):
         import app as appmod
 
         self.appmod = appmod
-        self.road = "서울특별시 강남구 테헤란로 123 (역삼동, 여삼빌딩)"
+        self.road = "가상시 가상구 남부순환로 2620 (가상동)"
         appmod._client = fake_client({
             "남부순환로 2620": [epost.Candidate("06133", self.road, "")],
-            "송파대로 145": [epost.Candidate("11111", "가상 주소 A", ""), epost.Candidate("22222", "가상 주소 B", "")],
+            "송파대로 145": [epost.Candidate("11111", "가상시 A구 송파대로 145", ""),
+                          epost.Candidate("22222", "가상시 B구 송파대로 145 (B동)", "")],
         })
         self.c = appmod.app.test_client()
 

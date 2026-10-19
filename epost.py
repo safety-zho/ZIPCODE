@@ -64,6 +64,10 @@ class LookupError_(Exception):
     """우체국 조회 자체가 실패한 경우 (결과 없음과 구분)."""
 
 
+class MismatchError(LookupError_):
+    """우체국이 돌려준 결과가 검색어와 맞지 않는 경우. 잘못된 우편번호가 들어가지 않게 버린다."""
+
+
 @dataclass
 class Candidate:
     zip: str
@@ -163,6 +167,27 @@ def district_tokens(addr: str) -> list[str]:
     return toks
 
 
+def _core_key(q: str) -> str | None:
+    """검색어의 핵심부를 공백 없이: '남부순환로 2620' → '남부순환로2620', '역삼동 648-23' → '역삼동648-23'."""
+    m = _ROAD_CORE_RE.search(q)
+    if m:
+        return re.sub(r"\s+", "", m["road"] + m["num"])
+    m = _JIBUN_CORE_RE.search(q)
+    if m:
+        return re.sub(r"\s+", "", m["dong"] + m["num"])
+    return None
+
+
+def candidate_matches(q: str, c: "Candidate") -> bool:
+    """후보의 도로명주소나 지번주소에 검색어 핵심부가 그대로 들어 있는지.
+    핵심부를 뽑을 수 없는 검색어(건물 이름 등)는 확인하지 않고 통과시킨다."""
+    key = _core_key(q)
+    if not key:
+        return True
+    hay = re.sub(r"\s+", "", f"{c.road}|{c.jibun}")
+    return re.search(re.escape(key) + r"(?![\d-])", hay) is not None
+
+
 def is_road_query(q: str) -> bool:
     return bool(_ROAD_CORE_RE.search(q)) or bool(re.search(r"(?:로|길)(\s|$)", q))
 
@@ -221,15 +246,6 @@ class EpostClient:
             min_interval if min_interval is not None else float(os.environ.get("EPOST_MIN_INTERVAL", "0.3"))
         )
         self.debug_dir = debug_dir or os.environ.get("EPOST_DEBUG_DIR") or None
-        self.session = requests.Session()
-        self.session.mount("https://", _TLS12Adapter())
-        self.session.headers.update(
-            {
-                "User-Agent": "Mozilla/5.0 (compatible; ZipcodeFiller/1.0; +internal-government-tool)",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "ko-KR,ko;q=0.9",
-            }
-        )
         self._cache: OrderedDict[str, list[Candidate]] = OrderedDict()
         self._cache_lock = threading.Lock()
         self._cache_max = 5000
@@ -253,6 +269,9 @@ class EpostClient:
             result.tried.append(q)
             try:
                 cands = self._search_cached(q)
+            except MismatchError as e:
+                last_error = e
+                continue  # 다른 검색어로 다시 시도
             except LookupError_ as e:
                 last_error = e
                 break  # 연결·서버 오류면 다른 검색어도 실패하므로 바로 멈춘다
@@ -283,11 +302,33 @@ class EpostClient:
                 self._cache.move_to_end(key)
                 return self._cache[key]
         cands = self._search_web(q) if self.mode == "web" else self._search_api(q)
+        # 검색한 도로명+건물번호(또는 동+지번)가 결과 주소에 실제로 들어 있는 후보만 쓴다.
+        # 하나도 맞지 않으면 잘못된 응답으로 보고 버린다(캐시에도 넣지 않음).
+        matched = [c for c in cands if candidate_matches(q, c)]
+        if cands and not matched:
+            log.warning("검색어와 맞지 않는 결과 %s건을 버렸습니다.", len(cands))
+            raise MismatchError("인터넷우체국 결과가 검색어와 맞지 않아 사용하지 않았습니다. 다시 검색해 주세요.")
+        cands = matched
         with self._cache_lock:
             self._cache[key] = cands
             if len(self._cache) > self._cache_max:
                 self._cache.popitem(last=False)
         return cands
+
+    @staticmethod
+    def _new_session() -> requests.Session:
+        # 검색마다 새 연결을 쓴다. 쿠키(세션)를 이어 쓰면 인터넷우체국이 앞선 검색 결과를
+        # 다시 돌려주는 현상이 확인되어, 매번 처음 방문한 것처럼 요청한다.
+        s = requests.Session()
+        s.mount("https://", _TLS12Adapter())
+        s.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (compatible; ZipcodeFiller/1.0; +internal-government-tool)",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "ko-KR,ko;q=0.9",
+            }
+        )
+        return s
 
     def _get(self, url: str, params: dict) -> requests.Response:
         # 공백을 %20으로 인코딩 (인터넷우체국 검색창과 같은 방식)
@@ -296,7 +337,9 @@ class EpostClient:
         for attempt in range(self.retries):
             self.throttle.wait()
             try:
-                resp = self.session.get(url, params=qs, timeout=self.timeout, allow_redirects=True)
+                with self._new_session() as s:
+                    resp = s.get(url, params=qs, timeout=self.timeout, allow_redirects=True)
+                    resp.content  # 연결을 닫기 전에 본문을 다 읽어 둔다
                 if resp.status_code >= 500:
                     raise LookupError_(f"우체국 서버 응답 오류 (HTTP {resp.status_code})")
                 if resp.status_code != 200:

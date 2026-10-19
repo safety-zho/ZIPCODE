@@ -48,7 +48,7 @@ jobs:
           # 결과는 실행 요약 화면(Annotations)에 표시된다.
           [Console]::OutputEncoding = [Text.Encoding]::UTF8
           $lines = @()
-          foreach ($addr in @("테헤란로 123", "남부순환로 2620", "송파대로 145")) {
+          foreach ($addr in @("테헤란로 123", "남부순환로 2620", "송파대로 145", "서울 강남구 테헤란로 123, 5층 501호", "역삼동 648-23")) {
             try {
               $body = (@{ address = $addr } | ConvertTo-Json -Compress)
               $res = Invoke-WebRequest -Uri "http://127.0.0.1:8123/api/search" -Method Post -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -UseBasicParsing
