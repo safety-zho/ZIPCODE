@@ -1,0 +1,36 @@
+name: Live site check
+on:
+  push:
+    paths: [".github/workflows/e2e-live.yml", "tests/e2e-live.mjs"]
+  workflow_dispatch:
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Prepare
+        run: |
+          npm install --no-save playwright@1.56.0
+          npx playwright install --with-deps chromium
+          pip install openpyxl
+          python3 - <<'PY'
+          import openpyxl
+          wb = openpyxl.Workbook(); ws = wb.active
+          ws["B1"] = "주소"; ws["C1"] = "우편번호"
+          for i, a in enumerate(["남부순환로 2620", "송파대로 145", "서울 강남구 테헤란로 123, 5층 501호", "중앙로 1", "없는길 9999"], 2):
+              ws.cell(i, 2, a)
+          wb.save("live.xlsx")
+          PY
+      - name: Open the live site and run
+        run: |
+          node tests/e2e-live.mjs
+          python3 - <<'PY' >> summary.txt
+          import openpyxl
+          ws = openpyxl.load_workbook("out.xlsx").active
+          print("엑셀 결과: " + " | ".join(f"{r[0]}={r[1]!r}" for r in ws.iter_rows(min_row=2, min_col=2, max_col=3, values_only=True)))
+          PY
+          msg=$(cat summary.txt | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::notice title=공개 링크 실제 사용 시험::$msg"

@@ -1,0 +1,24 @@
+// 공개된 링크를 실제 브라우저로 열어 엑셀 올리기 → 조회 → 내려받기까지 확인 (GitHub Actions에서 실행)
+import { chromium } from "playwright";
+const URL_ = process.env.SITE_URL || "https://safety-zho.github.io/ZIPCODE/";
+const b = await chromium.launch();
+const pg = await b.newPage({ acceptDownloads: true });
+const errs = [];
+pg.on("pageerror", (e) => errs.push(String(e)));
+pg.on("console", (m) => m.type() === "error" && errs.push(m.text()));
+await pg.goto(URL_, { waitUntil: "networkidle" });
+await pg.setInputFiles("#file", "live.xlsx");
+await pg.waitForSelector("#setupSec:not([hidden])");
+const meta = await pg.textContent("#fileMeta");
+await pg.click("#startBtn");
+await pg.waitForSelector("#startBtn:not([hidden])", { timeout: 60000 });
+await pg.waitForTimeout(500);
+const tally = (await pg.textContent("#tally")).replace(/\s+/g, " ");
+const rows = await pg.$$eval("#tbody tr", (trs) => trs.map((tr) => [...tr.children].slice(1, 5).map((td) => td.innerText.replace(/\s+/g, " ").trim()).join(" / ")));
+const [dl] = await Promise.all([pg.waitForEvent("download"), pg.click("#downloadBtn")]);
+await dl.saveAs("out.xlsx");
+const lines = [`파일: ${meta}`, `결과: ${tally}`, ...rows, `내려받은 파일: ${dl.suggestedFilename()}`, `브라우저 오류: ${errs.length ? errs.join(" | ") : "없음"}`];
+console.log(lines.join("\n"));
+await b.close();
+import { writeFileSync } from "fs";
+writeFileSync("summary.txt", lines.join("\n"));
