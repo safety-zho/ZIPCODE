@@ -61,7 +61,8 @@ button, input, select { font: inherit; color: inherit; }
 /* ── 머리말 ───────────────────────────── */
 header.top { padding: 36px 0 20px; display: flex; gap: 24px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
 h1 { margin: 0; font-size: 28px; line-height: 1.25; font-weight: 700; letter-spacing: -0.02em; }
-.lede { margin: 6px 0 0; color: var(--ink-2); max-width: 46em; }
+.lede { margin: 6px 0 0; color: var(--ink-2); max-width: 52em; }
+.lede span, footer p span { display: block; text-wrap: pretty; }
 .source { font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
 .source b { color: var(--ink); font-weight: 600; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
@@ -170,7 +171,7 @@ tr.flash td { animation: flash 1.2s ease-out; }
 .dock .summary b { color: var(--ink); }
 
 footer { color: var(--ink-3); font-size: 12.5px; padding: 8px 0 40px; }
-footer p { margin: 4px 0; max-width: 72em; }
+footer p { margin: 0 0 10px; max-width: 60em; line-height: 1.6; }
 [hidden] { display: none !important; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -194,7 +195,7 @@ footer p { margin: 4px 0; max-width: 72em; }
   <header class="top">
     <div>
       <h1>우편번호 일괄 입력</h1>
-      <p class="lede">주소가 들어 있는 엑셀을 올리면 주소마다 행정안전부 도로명주소 검색으로 우편번호를 찾아 우편번호 칸을 채웁니다. 검색 결과로 확인된 우편번호만 파일에 들어갑니다.</p>
+      <p class="lede"><span>엑셀을 올리면 주소마다 행정안전부 도로명주소 검색으로 우편번호를 찾아 채웁니다.</span><span>검색 결과로 확인된 우편번호만 파일에 들어갑니다.</span></p>
     </div>
     <div class="source" id="source"><span class="dot"></span><span>조회처 확인 중</span></div>
   </header>
@@ -271,8 +272,16 @@ footer p { margin: 4px 0; max-width: 72em; }
   </section>
 
   <footer>
-    <p>우편번호는 행정안전부 도로명주소 검색 결과에서만 가져오며, 직접 입력할 수 없습니다. 후보가 여러 개인 주소는 검색 결과 중에서 골라 주세요. 각 행의 ‘우체국에서 보기’로 인터넷우체국 결과와 맞춰 볼 수 있습니다.</p>
-    <p>엑셀 파일은 이 브라우저 안에서만 처리되고 어디에도 올라가지 않습니다. 우편번호를 찾기 위해 주소 중 ‘시·군·구, 도로명, 건물번호’(지번 주소는 ‘동·리, 지번’)만 행정안전부 도로명주소 검색(juso.go.kr)으로 보냅니다. 동·호수, 층, 이름 등 다른 내용은 보내지 않습니다.</p>
+    <p>
+      <span>우편번호는 행정안전부 도로명주소 검색 결과에서만 가져오며, 직접 입력할 수 없습니다.</span>
+      <span>후보가 여러 개인 주소는 검색 결과 중에서 골라 주세요.</span>
+      <span>각 행의 ‘우체국에서 보기’로 인터넷우체국 결과와 맞춰 볼 수 있습니다.</span>
+    </p>
+    <p>
+      <span>엑셀 파일은 이 브라우저 안에서만 처리되고 어디에도 올라가지 않습니다.</span>
+      <span>행정안전부(juso.go.kr)로는 주소 중 시·군·구, 도로명, 건물번호(지번 주소는 동·리, 지번)만 보냅니다.</span>
+      <span>동·호수, 층, 이름 등 다른 내용은 보내지 않습니다.</span>
+    </p>
   </footer>
 </div>
 
